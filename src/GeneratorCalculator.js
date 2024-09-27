@@ -2,132 +2,197 @@ import React, { useState } from 'react';
 import './index.css';
 
 const GeneratorCalculator = () => {
-    const [fuelType, setFuelType] = useState('lpg'); // Default to LPG
-    const [fuelAmount, setFuelAmount] = useState('1'); // Default to full tank
-    const [appliances, setAppliances] = useState({});
+    const [fuelType, setFuelType] = useState('gasoline');
+    const [fuelAmount, setFuelAmount] = useState('');
+    const [outlet, setOutlet] = useState('');
+    const [appliances, setAppliances] = useState({
+        fridge: false,
+        tv: false,
+        fan: false,
+        microwave: false,
+        coffeeMaker: false,
+        toaster: false,
+        dishwasher: false,
+        washingMachine: false,
+        dryer: false,
+        computer: false,
+        phoneCharger: false,
+        router: false,
+    });
     const [result, setResult] = useState('');
 
-    // Assume a full LPG 15lb tank is 3.5 gallons
-    const lpgFullTankGallons = 3.5;
+    const appliancePower = {
+        fridge: 600, // Watts
+        tv: 100,
+        fan: 75,
+        microwave: 1000,
+        coffeeMaker: 800,
+        toaster: 1200,
+        dishwasher: 1500,
+        washingMachine: 500,
+        dryer: 3000,
+        computer: 150,
+        phoneCharger: 10,
+        router: 10,
+    };
 
-    // List of common household appliances with typical wattage
-    const applianceList = [
-        { name: 'Refrigerator', key: 'fridge', wattage: 600 },
-        { name: 'TV', key: 'tv', wattage: 100 },
-        { name: 'Fan', key: 'fan', wattage: 75 },
-        { name: 'Phone Charger', key: 'phoneCharger', wattage: 10 },
-        { name: 'Laptop Charger', key: 'laptopCharger', wattage: 60 },
-        { name: 'Internet Router', key: 'router', wattage: 15 },
-        { name: 'Wi-Fi Point', key: 'wifiPoint', wattage: 15 },
-        // Add more appliances as needed
-    ];
+    const outletLimits = {
+        "1": { maxAmps: 20, voltage: 120 }, // 120V, 20A GFCI
+        "2": { maxAmps: 30, voltage: 120 }, // 120V, 30A Twist Lock
+        "3": { maxAmps: 30, voltage: 240 }, // 120/240V, 30A Twist Lock
+        "4": { maxAmps: 31.25, voltage: 240 } // 120/240V, 50A
+    };
 
-    // Handle change in quantity for each appliance
-    const handleApplianceChange = (e, key) => {
-        const { value } = e.target;
-        const quantity = parseInt(value, 10);
-        setAppliances({ ...appliances, [key]: quantity > 0 ? quantity : 0 });
+    const handleApplianceChange = (e) => {
+        const { name, checked } = e.target;
+        setAppliances({ ...appliances, [name]: checked });
     };
 
     const calculateFuelDuration = () => {
+        if (!fuelAmount || !outlet) {
+            setResult('Please enter fuel amount and select an outlet.');
+            return;
+        }
+
+        const selectedFuelRate = fuelType === 'gasoline' ? 7500 : 6750;
         let totalLoad = 0;
 
-        // Calculate the total power load based on selected appliances and their quantities
-        applianceList.forEach(appliance => {
-            const quantity = appliances[appliance.key] || 0;
-            totalLoad += appliance.wattage * quantity;
-        });
+        // Calculate total power consumption of selected appliances
+        for (const appliance in appliances) {
+            if (appliances[appliance]) {
+                totalLoad += appliancePower[appliance];
+            }
+        }
 
-        if (totalLoad === 0 || (!fuelAmount && fuelType === 'gasoline') || (!fuelAmount && fuelType === 'lpg')) {
-            setResult('Please enter fuel amount and select at least one appliance with quantity.');
+        if (totalLoad === 0) {
+            setResult('Please select at least one appliance.');
             return;
         }
 
-        let totalFuelAvailable; // in gallons
-        let fuelConsumptionPerHour; // in gallons per hour
-
-        if (fuelType === 'gasoline') {
-            totalFuelAvailable = parseFloat(fuelAmount);
-            // Approximate fuel consumption per hour for gasoline (in gallons)
-            // Assuming 0.75 gallons/hour at 50% load for a typical 7500W generator
-            fuelConsumptionPerHour = 0.75 * (totalLoad / 3750);
-        } else if (fuelType === 'lpg') {
-            totalFuelAvailable = parseFloat(fuelAmount) * lpgFullTankGallons;
-            // Approximate fuel consumption per hour for LPG (in gallons)
-            // Assuming 1.5 gallons/hour at 50% load for a typical 7500W generator
-            fuelConsumptionPerHour = 1.5 * (totalLoad / 3750);
-        }
-
-        // Prevent division by zero or very small fuel consumption values
-        if (fuelConsumptionPerHour <= 0) {
-            setResult('Fuel consumption rate is too low to be realistic.');
+        // Check if the load is safe for the selected outlet
+        const maxWatts = outletLimits[outlet].maxAmps * outletLimits[outlet].voltage;
+        if (totalLoad > maxWatts) {
+            setResult(`The total load of ${totalLoad}W exceeds the maximum capacity of ${maxWatts}W for the selected outlet.`);
             return;
         }
 
-        // Calculate hours of operation based on available fuel and consumption rate
-        const hours = totalFuelAvailable / fuelConsumptionPerHour;
+        // Calculate fuel duration
+        const availablePower = fuelAmount * selectedFuelRate;
+        const hours = availablePower / totalLoad;
 
-        setResult(`The generator will run for approximately ${hours.toFixed(2)} hours.`);
+        setResult(`The generator will run for approximately ${hours.toFixed(2)} hours with the selected load.`);
     };
 
     return (
         <div className="calculator">
             <h2>Generator Fuel Duration Calculator</h2>
             <form>
-                <div className="form-group">
+                <div>
                     <label>Fuel Type:</label>
-                    <select value={fuelType} onChange={(e) => {
-                        setFuelType(e.target.value);
-                        setFuelAmount('1'); // Reset to full tank
-                    }}>
+                    <select value={fuelType} onChange={(e) => setFuelType(e.target.value)}>
                         <option value="gasoline">Gasoline</option>
                         <option value="lpg">LPG</option>
                     </select>
                 </div>
 
-                {fuelType === 'gasoline' && (
-                    <div className="form-group">
-                        <label>Fuel Amount (gallons):</label>
-                        <input
-                            type="number"
-                            value={fuelAmount}
-                            onChange={(e) => setFuelAmount(e.target.value)}
-                            step="0.1"
-                        />
-                    </div>
-                )}
-
-                {fuelType === 'lpg' && (
-                    <div className="form-group">
-                        <label>Fuel Amount (fraction of 15lb tank):</label>
-                        <select
-                            value={fuelAmount}
-                            onChange={(e) => setFuelAmount(parseFloat(e.target.value))}
-                        >
-                            <option value="0.25">1/4 Tank (0.875 gal)</option>
-                            <option value="0.5">1/2 Tank (1.75 gal)</option>
-                            <option value="0.75">3/4 Tank (2.625 gal)</option>
-                            <option value="1">Full Tank (3.5 gal)</option>
-                        </select>
-                    </div>
-                )}
-
-                <div className="form-group">
-                    <label>Select Appliances and Quantity:</label>
-                    {applianceList.map(appliance => (
-                        <div className="appliance-item" key={appliance.key}>
-                            <label>{appliance.name} ({appliance.wattage}W):</label>
-                            <input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                onChange={(e) => handleApplianceChange(e, appliance.key)}
-                            />
-                        </div>
-                    ))}
+                <div>
+                    <label>Fuel Amount (gallons):</label>
+                    <input
+                        type="number"
+                        value={fuelAmount}
+                        onChange={(e) => setFuelAmount(e.target.value)}
+                        step="0.1"
+                    />
                 </div>
 
-                <button type="button" className="calculate-btn" onClick={calculateFuelDuration}>Calculate</button>
+                <div>
+                    <label>Outlet:</label>
+                    <select value={outlet} onChange={(e) => setOutlet(e.target.value)}>
+                        <option value="">Select Outlet</option>
+                        <option value="1">120V, 20A Duplex GFCI (NEMA 5-20R)</option>
+                        <option value="2">120V, 30A Twist Lock (NEMA L5-30R)</option>
+                        <option value="3">120/240V, 30A Twist Lock (NEMA L14-30R)</option>
+                        <option value="4">120/240V, 50A (NEMA 14-50R)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label>Select Appliances:</label><br />
+                    <input
+                        type="checkbox"
+                        name="fridge"
+                        checked={appliances.fridge}
+                        onChange={handleApplianceChange}
+                    /> Refrigerator (600W)<br />
+                    <input
+                        type="checkbox"
+                        name="tv"
+                        checked={appliances.tv}
+                        onChange={handleApplianceChange}
+                    /> TV (100W)<br />
+                    <input
+                        type="checkbox"
+                        name="fan"
+                        checked={appliances.fan}
+                        onChange={handleApplianceChange}
+                    /> Fan (75W)<br />
+                    <input
+                        type="checkbox"
+                        name="microwave"
+                        checked={appliances.microwave}
+                        onChange={handleApplianceChange}
+                    /> Microwave (1000W)<br />
+                    <input
+                        type="checkbox"
+                        name="coffeeMaker"
+                        checked={appliances.coffeeMaker}
+                        onChange={handleApplianceChange}
+                    /> Coffee Maker (800W)<br />
+                    <input
+                        type="checkbox"
+                        name="toaster"
+                        checked={appliances.toaster}
+                        onChange={handleApplianceChange}
+                    /> Toaster (1200W)<br />
+                    <input
+                        type="checkbox"
+                        name="dishwasher"
+                        checked={appliances.dishwasher}
+                        onChange={handleApplianceChange}
+                    /> Dishwasher (1500W)<br />
+                    <input
+                        type="checkbox"
+                        name="washingMachine"
+                        checked={appliances.washingMachine}
+                        onChange={handleApplianceChange}
+                    /> Washing Machine (500W)<br />
+                    <input
+                        type="checkbox"
+                        name="dryer"
+                        checked={appliances.dryer}
+                        onChange={handleApplianceChange}
+                    /> Dryer (3000W)<br />
+                    <input
+                        type="checkbox"
+                        name="computer"
+                        checked={appliances.computer}
+                        onChange={handleApplianceChange}
+                    /> Computer (150W)<br />
+                    <input
+                        type="checkbox"
+                        name="phoneCharger"
+                        checked={appliances.phoneCharger}
+                        onChange={handleApplianceChange}
+                    /> Phone Charger (10W)<br />
+                    <input
+                        type="checkbox"
+                        name="router"
+                        checked={appliances.router}
+                        onChange={handleApplianceChange}
+                    /> Router (10W)<br />
+                </div>
+
+                <button type="button" onClick={calculateFuelDuration}>Calculate</button>
             </form>
             {result && <div className="result">{result}</div>}
         </div>
